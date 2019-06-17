@@ -8,7 +8,7 @@ results, excluding advertisements.
 
 Requires Python 3.5+, Selenium module, and WebDriver for Chrome.
 
-##Usage:
+## Usage:
 
 `python3 main.py YOUR_SEARCH_KEYWORD`
 
