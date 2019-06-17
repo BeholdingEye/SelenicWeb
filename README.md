@@ -1,5 +1,5 @@
 # SelenicWeb
-Chrome automation tool for data scraping
+*Chrome automation tool for data scraping*
 
 This is a starter app demonstrating the Selenium module by automating 
 Chrome to access Yahoo, perform a search for the keyword entered on the 
