@@ -32,7 +32,7 @@
 #  
 
 
-import sys, time
+import sys, time, random
 
 from selenium import webdriver
 from selenium.webdriver.common.keys import Keys
@@ -62,13 +62,19 @@ class SelenicWeb:
         self.searchCondition = args["searchCondition"]
         self.searchActions = args["searchActions"]
         
-        self.start_search()
+        self.searchResultURLQuery = None # May be set later, when we have search result elements
+        self.searchResultBlockQuery = None # Ditto
+        
+        self.searchPaginate = args["searchPaginate"]
+        self.searchPagesMax = args["searchPagesMax"]
+        
+        self.run_search()
         self.browser.quit()
     
     
-    def start_search(self, *args, **kwargs):
+    def run_search(self, *args, **kwargs):
         """
-        Start browsing with searchingSite
+        Browse searchingSite
         
         """
         self.get_browser()
@@ -76,38 +82,82 @@ class SelenicWeb:
         if self.evaluate_site(condition=self.searchCondition):
             print("Site accessed - we are ready to test for elements and act on them")
             time.sleep(self.sleepAfterAction)
+            
+            # Run first page actions
             for actionSpec in self.searchActions:
-                # elem may be a list of elements
-                elem = self.get_action_element(actionSpec["elementByType"], actionSpec["elementValue"])
-                if elem and not isinstance(elem, list):
-                    print("Element found:", actionSpec["elementByType"], "-", actionSpec["elementValue"])
-                    result = self.do_action(elem, actionSpec["actionType"], actionSpec["actionValue"])
-                    print("Action performed:", actionSpec["actionType"])
-                    time.sleep(self.sleepAfterAction)
-                    if result:
-                        self.process_result(result) # TODO
-                elif elem and isinstance(elem, list):
-                    self.process_elements(elem)
+                self.run_action_spec(actionSpec)
+                
+            # Run more pages actions, to declared max of pages (not necessarily reached)
+            for x in range(self.searchPagesMax):
+                for pageActionSpec in self.searchPaginate:
+                    self.run_action_spec(pageActionSpec)
             print("Quit")
         return 0
     
     
-    def process_elements(self, elements): # TODO make generic
+    def run_action_spec(self, actionSpec):
         """
-        Processes elements
+        Runs action spec
         
         """
-        print("==== Processed results:")
-        for elem in elements:
-            elemURL = elem.get_attribute("href")
-            if elemURL: print(elemURL)
-        print("==== Processing completed")
+        # elem may be a list of elements
+        elem = self.get_action_element(actionSpec["elementByType"], actionSpec["elementValue"])
+        
+        # --------------------- Single element
+        if elem and not isinstance(elem, list):
+            print("Element found:", actionSpec["elementByType"], "-", actionSpec["elementValue"])
+            
+            # Do action on element
+            result = self.do_action(elem, actionSpec["actionType"], actionSpec["actionValue"])
+            print("Action performed:", actionSpec["actionType"])
+            
+            # Execute callback if one is set
+            if actionSpec["callback"]:
+                # Record queries that callback will need
+                self.searchResultURLQuery = actionSpec["searchResultURLQuery"]
+                self.searchResultBlockQuery = actionSpec["searchResultBlockQuery"]
+                
+                callback = actionSpec["callback"]
+                callback(elem, self) # We pass the instance to callback
+                
+            time.sleep(self.sleepAfterAction)
+            if result:
+                self.process_action_result(result) # TODO
+        
+        # --------------------- List of elements
+        elif elem and isinstance(elem, list):
+            # Execute callback if one is set
+            if actionSpec["callback"]:
+                # Record queries that callback will need
+                self.searchResultURLQuery = actionSpec["searchResultURLQuery"]
+                self.searchResultBlockQuery = actionSpec["searchResultBlockQuery"]
+                
+                print("==== Processed results:")
+                # Call callback
+                callback = actionSpec["callback"]
+                callback(elem, self) # We pass the instance to callback
+                print("==== Processing completed")
+        
+        # --------------------- Element not found
+        elif not elem:
+            self.exit_run("Element not found: " + actionSpec["elementByType"] + " - " + actionSpec["elementValue"])
         return 0
     
     
-    def process_result(self, result):
+    def exit_run(self, message):
         """
-        Process the result of an action
+        Exit run, printing message
+        
+        """
+        print(message)
+        print("Quit")
+        self.browser.quit()
+        sys.exit()
+    
+    
+    def process_action_result(self, result):
+        """
+        Process the result of an action (some do have results)
         
         """
         # TODO
@@ -179,50 +229,41 @@ class SelenicWeb:
         elif actionType == "get-html":
             return element.get_attribute('outerHTML')
         return 0
-
+        
+# End of SelenicWeb class
 
 
 def main():
     """
-    Testing
-    
-    In case of breakage, check if the args are still correct
+    In case of breakage, check if the config is still correct
     
     """
-    # Get search string from commandline
+    # Get config name from commandline or set to Yahoo as default
     if len(sys.argv) < 2:
-        print("Missing search string parameter")
-        sys.exit()
-    searchString = sys.argv[1]
-    
-    # The "args" structure defines our activity on the site
-    args = {
-        "sleepAfterAction"  : 2,
-        "searchingSite"     : "http://www.yahoo.com",
-        "searchCondition"   : {"title" : "Yahoo"},
-        "searchActions"     :   [
-                                    {
-                                        "elementByType" : "name",
-                                        "elementValue" : "agree",
-                                        "actionType" : "click",
-                                        "actionValue" : None,
-                                    },
-                                    {
-                                        "elementByType" : "name",
-                                        "elementValue" : "p",
-                                        "actionType" : "type-text",
-                                        "actionValue" : searchString + Keys.ENTER,
-                                    },
-                                    {
-                                        "elementByType" : "query-multi",
-                                        "elementValue" : "div#main div#web ol.searchCenterMiddle > li h3.title a",
-                                        "actionType" : "get-html",
-                                        "actionValue" : None,
-                                    },
-                                ],
-    }
+        from config_yahoo import get_config
+        args = get_config()
+    else:
+        # Our code is repetitive because importing with exec() does not work well
+        configName = sys.argv[1].lower()
+        if configName == "yahoo":
+            try:
+                from config_yahoo import get_config
+            except Exception as e:
+                print("ERROR: Configuration does not exist or could not be loaded")
+                sys.exit()
+        elif configName == "private": # Not in public GitHub repo, create your own
+            try:
+                from config_private import get_config
+            except Exception as e:
+                print("ERROR: Configuration does not exist or could not be loaded")
+                sys.exit()
+        else:
+            print("ERROR: Configuration does not exist")
+            sys.exit()
+        args = get_config()
     sw = SelenicWeb(args)
     return 0
+
 
 if __name__ == "__main__":
     main()
