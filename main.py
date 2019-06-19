@@ -42,8 +42,8 @@ class SelenicWeb:
     """
     Main class, demonstrating the Selenium module by automating Chrome
     to access Yahoo, perform a search for the keyword entered on the 
-    commandline, and print the URLs from the first page of web search 
-    results, excluding advertisements
+    commandline, and print the URLs from the set number of pages of web 
+    search results, excluding advertisements
     
     """
     
@@ -51,12 +51,26 @@ class SelenicWeb:
         """
         "args" dict:
         
+            optionsArguments: options for Chrome
+            avoidDetection: avoid detection by website
+            initialDelay: delay in seconds before activity
             sleepAfterAction: number of seconds to pause after an action
             searchingSite: site to search
             searchCondition: condition that must be true for the search site
             searchActions: list of dicts specifying series of elements and actions to perform on them
+            endingDelay: delay in seconds after activity done, before quitting
         
         """
+        
+        if "optionsArguments" in args: self.optionsArguments = args["optionsArguments"]
+        else: self.optionsArguments = None
+        
+        if "avoidDetection" in args: self.avoidDetection = args["avoidDetection"]
+        else: self.avoidDetection = False
+        
+        if "initialDelay" in args: self.initialDelay = args["initialDelay"]
+        else: self.initialDelay = 0
+            
         self.sleepAfterAction = args["sleepAfterAction"]
         self.searchingSite = args["searchingSite"]
         self.searchCondition = args["searchCondition"]
@@ -68,8 +82,11 @@ class SelenicWeb:
         self.searchPaginate = args["searchPaginate"]
         self.searchPagesMax = args["searchPagesMax"]
         
+        if "endingDelay" in args: self.endingDelay = args["endingDelay"]
+        else: self.endingDelay = 0
+        
+        # Get started and quit when done
         self.run_search()
-        self.browser.quit()
     
     
     def run_search(self, *args, **kwargs):
@@ -80,8 +97,9 @@ class SelenicWeb:
         self.get_browser()
         self.get_url(self.searchingSite)
         if self.evaluate_site(condition=self.searchCondition):
-            print("Site accessed - we are ready to test for elements and act on them")
-            time.sleep(self.sleepAfterAction)
+            print("Site accessed - we are ready to test for elements and act on them, after initial delay:", self.initialDelay)
+            
+            time.sleep(self.initialDelay)
             
             # Run first page actions
             for actionSpec in self.searchActions:
@@ -91,17 +109,24 @@ class SelenicWeb:
             for x in range(self.searchPagesMax):
                 for pageActionSpec in self.searchPaginate:
                     self.run_action_spec(pageActionSpec)
-            print("Quit")
+        
+        print("Will quit after ending delay:", self.endingDelay)
+        time.sleep(self.endingDelay)
+        print("Quit")
+        self.browser.quit()
         return 0
     
     
     def run_action_spec(self, actionSpec):
         """
-        Runs action spec
+        Runs action spec, executing the action and any callback
         
         """
         # elem may be a list of elements
-        elem = self.get_action_element(actionSpec["elementByType"], actionSpec["elementValue"])
+        try:
+            elem = self.get_action_element(actionSpec["elementByType"], actionSpec["elementValue"])
+        except Exception as e:
+            elem = None
         
         # --------------------- Single element
         if elem and not isinstance(elem, list):
@@ -138,9 +163,10 @@ class SelenicWeb:
                 callback(elem, self) # We pass the instance to callback
                 print("==== Processing completed")
         
-        # --------------------- Element not found
+        # --------------------- Element not found; either continue or bail
         elif not elem:
-            self.exit_run("Element not found: " + actionSpec["elementByType"] + " - " + actionSpec["elementValue"])
+            if "elementOptional" not in actionSpec.keys() or not actionSpec["elementOptional"]:
+                self.exit_run("Element not found: " + actionSpec["elementByType"] + " - " + actionSpec["elementValue"])
         return 0
     
     
@@ -150,6 +176,8 @@ class SelenicWeb:
         
         """
         print(message)
+        print("Will quit after ending delay:", self.endingDelay)
+        time.sleep(self.endingDelay)
         print("Quit")
         self.browser.quit()
         sys.exit()
@@ -169,7 +197,19 @@ class SelenicWeb:
         Return Chrome browser instance
         
         """
-        self.browser = webdriver.Chrome()
+        options = None
+        if self.optionsArguments:
+            options = webdriver.ChromeOptions()
+            for arg in self.optionsArguments:
+                if arg == "load-extension":
+                    options.add_experimental_option("excludeSwitches", ["load-extension"])
+                else:
+                    options.add_argument(arg)
+        if self.avoidDetection:
+            if not options: options = webdriver.ChromeOptions()
+            #options.add_experimental_option("useAutomationExtension", False)
+            options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        self.browser = webdriver.Chrome(options=options)
         return 0
     
     
@@ -222,12 +262,15 @@ class SelenicWeb:
         Performs action on element
         
         """
-        if actionType == "type-text": element.send_keys(actionValue)
-        elif actionType == "click": element.click()
-        elif actionType == "get-text":
-            return element.text
-        elif actionType == "get-html":
-            return element.get_attribute('outerHTML')
+        try:
+            if actionType == "type-text": element.send_keys(actionValue)
+            elif actionType == "click": element.click()
+            elif actionType == "get-text":
+                return element.text
+            elif actionType == "get-html":
+                return element.get_attribute('outerHTML')
+        except Exception as e:
+            print(e)
         return 0
         
 # End of SelenicWeb class
@@ -250,20 +293,28 @@ def main():
                 from config_yahoo import get_config
             except Exception as e:
                 print("ERROR: Configuration does not exist or could not be loaded")
+                print(e)
                 sys.exit()
         elif configName == "private": # Not in public GitHub repo, create your own
             try:
                 from config_private import get_config
             except Exception as e:
                 print("ERROR: Configuration does not exist or could not be loaded")
+                print(e)
                 sys.exit()
         else:
             print("ERROR: Configuration does not exist")
             sys.exit()
         args = get_config()
-    sw = SelenicWeb(args)
+    
+    if args:
+        sw = SelenicWeb(args)
     return 0
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt as e:
+        print("\nUser quit.")
+        sys.exit()

@@ -12,15 +12,32 @@ def get_config():
     Returns Yahoo config
     
     """
+    # Initial delay
+    initialDelay = 5
+    
+    # Ending delay
+    endingDelay = 5
+    
     # Search string for this config
-    searchString = "greeting cards"
+    searchString = "digital camera"
     
     # Maximum number of search result pages to traverse
-    searchPagesMax = 2
+    searchPagesMax = 3
 
     config_yahoo = {
-
+        
+        "initialDelay"      : initialDelay,
+        "endingDelay"       : endingDelay,
         "sleepAfterAction"  : 2 + (3 * random.random()),
+        "optionsArguments"  :   [
+                                    "--start-maximized",
+                                    "--disable-infobars",
+                                    "--disable-extensions",
+                                    "load-extension", # Disabling, rather than enabling, preventing a warning popup
+                                    #"--user-data-dir=/path/to/chrome", # Use the path to your Chrome config folder
+                                    "test-type=browser"
+                                ],
+        "avoidDetection"    : False,
         "searchingSite"     : "http://www.yahoo.com",
         "searchCondition"   : {"title" : "Yahoo"},
         "searchActions"     :   [
@@ -32,6 +49,7 @@ def get_config():
                                         "callback" : None,
                                         "searchResultURLQuery" : None,
                                         "searchResultBlockQuery" : None,
+                                        "elementOptional" : True,
                                     },
                                     {
                                         "elementByType" : "name",
@@ -72,8 +90,9 @@ def get_config():
                                         "searchResultBlockQuery" : "div.compText p",
                                     },
                                 ],
-        "searchPagesMax"    :   searchPagesMax,
+        "searchPagesMax"    :   max(0,searchPagesMax-1),
     }
+    print("We are going to obtain up to "+str(max(0,searchPagesMax-1))+" pages of search results on Yahoo for:", searchString)
     return config_yahoo
 
 
